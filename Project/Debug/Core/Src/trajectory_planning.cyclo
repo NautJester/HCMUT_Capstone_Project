@@ -1,0 +1,5 @@
+../Core/Src/trajectory_planning.c:5:6:CubicSpline	3
+../Core/Src/trajectory_planning.c:21:6:GenerateControlPoints	5
+../Core/Src/trajectory_planning.c:49:6:GenerateCurvedTrajectory5DOF	2
+../Core/Src/trajectory_planning.c:67:6:GenerateTrajectory5DOF	4
+../Core/Src/trajectory_planning.c:84:6:InterpolateOrientation	1

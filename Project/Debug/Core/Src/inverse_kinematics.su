@@ -1,0 +1,10 @@
+C:\ST\STM32CubeIDE_1.14.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.11.3.rel1.win32_1.1.100.202309141235\tools\bin/../lib/gcc/arm-none-eabi/11.3.1/../../../../arm-none-eabi/include/math.h:374:14:cosf	16	static
+C:\ST\STM32CubeIDE_1.14.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.11.3.rel1.win32_1.1.100.202309141235\tools\bin/../lib/gcc/arm-none-eabi/11.3.1/../../../../arm-none-eabi/include/math.h:375:14:sinf	16	static
+../Core/Src/inverse_kinematics.c:16:6:MatMultiply	40	static
+../Core/Src/inverse_kinematics.c:36:6:computeR0_3	56	static
+../Core/Src/inverse_kinematics.c:51:7:determinant3x3	32	static
+../Core/Src/inverse_kinematics.c:58:6:invertMatrix3x3	32	static
+../Core/Src/inverse_kinematics.c:83:6:invertRotationMatrix	32	static
+../Core/Src/inverse_kinematics.c:101:6:computeTheta4Theta5	72	static
+../Core/Src/inverse_kinematics.c:132:6:InverseKinematics_Init	24	static
+../Core/Src/inverse_kinematics.c:141:6:InverseKinematics_Calculate	72	static
