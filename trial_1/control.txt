@@ -1,0 +1,47 @@
+void control(float *current_angles, float *target_angles, float *vmax, PID_Controller pid, LSPB_Params *lspb, float Kp, float Ki, float Kd, float dt)
+{
+	float angles[5];
+    // 2. Khởi tạo quỹ đạo LSPB cho từng khớp
+    for (int i = 0; i < 5; i++)
+    {
+        LSPB_Init(&lspb[i], current_angles[i], target_angles[i], vmax[i], 2 * vmax[i], 2.0f);
+        current_angles[i] = angleToPWM(current_angles[i]);
+    }
+        for (float t = 0; t <= lspb[0].t_total + 1; t += DT)
+        {
+        	for (int i = 0; i < 5; i++)
+        	{
+        		//3. LSPB để hoạch định quỹ đạo cho từng khớp tại th ?i điểm t
+                float target_angle = LSPB_CalculatePosition(&lspb[i], t);
+                // 4. Chuyển đổi góc đích sang xung PWM
+                target_angle = angleToPWM(target_angle);
+
+                PID_Init(&pid, Kp, Ki, Kd, target_angle, dt);
+//                // Cập nhật setpoint cho PID là giá trị PWM mục tiêu
+//                float setpoint = target_angle;
+//
+//                // Thiết lập sai số ban đầu cho PID
+//                pid.prev_error = fabs(setpoint - current_angles[i]);
+
+                // Vòng lặp đi ?u khiển servo để đạt tới góc mục tiêu bằng PID
+                while (fabs(current_angles[i] - target_angle) > 0.1)
+                {
+                    // 5. Tính toán PID để cập nhật xung PWM cho servo
+                    current_angles[i] += PID_Compute(&pid, current_angles[i]) * dt;
+
+                    // Chuyển đổi từ PWM sang góc
+                    angles[i] = PWMToAngle(current_angles[i]);
+					if(i == 1)
+					{
+						PCA9685_SetServoAngle_1(2 * i, angles[i]);
+					}
+					else
+					{
+						PCA9685_SetServoAngle(2 * i, angles[i]);
+					}
+                }
+        	}
+            osDelay((int)(DT * 10)); // Delay theo mili giây
+        }
+        active = 0;
+}

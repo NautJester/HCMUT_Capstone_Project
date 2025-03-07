@@ -1,0 +1,70 @@
+#include "main.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <inverse_kinematics.h>
+#include <LSPB.h>
+#include <pid.h>
+#include <pca9685.h>
+
+#define PWM_FREQUENCY 50
+#define MAX_RESOLUTION 4095
+#define MIN_PULSE_WIDTH 102.375f   // 1ms
+#define MAX_PULSE_WIDTH 511.875f   // 2ms
+#define PWM_PERIOD_MS 20.0f    // 20ms
+#define DT 0.1
+#define PI 3.14159265358979323846
+#define BUFFER_SIZE 11
+
+
+uint8_t rxBuffer[BUFFER_SIZE + 5]; // Receive_buffer
+uint8_t frame[BUFFER_SIZE]; // Buffer chứa frame hợp lệ
+uint8_t frameIndex = 0; // Chỉ số hiện tại trong frame
+uint8_t frameReceived = 0; // Cờ nhận frame hoàn chỉnh
+
+int active = 0; // State of robot
+int position_received = 0; // Receive_state
+float desired_position[3] = {3.7, 17.7, 1.5};
+
+	  float target_angles[5];
+  	  float current_angles[5] = {0.0, 90.0, 90.0, 90.0, 90.0};
+  	  float vmax[5];
+
+      if(active == 0 && position_received == 1)
+      {
+    	  active = 1;
+          InverseKinematics_Calculate(&ik, desired_position, target_angles);
+          convertThetaArrayToDegrees(target_angles);
+
+          calculate_vmax(current_angles, target_angles, vmax);
+
+          PCA9685_SetServoAngle(10, 50);
+
+          control(current_angles, target_angles, vmax, pid, lspb, Kp, Ki, Kd, dt);
+          HAL_Delay(7000);
+
+          PCA9685_SetServoAngle(10, 90);
+
+
+          position_received = 0;
+          // Khởi động lại DMA
+          HAL_UART_Receive_DMA(&huart1, rxBuffer, BUFFER_SIZE);
+      }
+      else
+      {
+    	  for (int i = 0; i < 5; i++)
+    	  {
+    		  	if(i == 0)
+    		  	{
+    		  		PCA9685_SetServoAngle(2 * i, 0);
+    		  	}
+    		  	else if(i == 1)
+				{
+					PCA9685_SetServoAngle_1(2 * i, 90);
+				}
+				else
+				{
+					PCA9685_SetServoAngle(2 * i, 90);
+				}
+    	  }
+      }
+      HAL_Delay(1000);

@@ -1,0 +1,166 @@
+void computeRotationMatrix(float rpy[3], float R[3][3])
+{
+    float roll_rad = rpy[0] * PI / 180.0;
+    float pitch_rad = rpy[1] * PI / 180.0;
+    float yaw_rad = rpy[2] * PI / 180.0;
+
+    // Compute the individual rotation matrices
+    float Rx[3][3] = {
+        {1, 0, 0},
+        {0, cosf(roll_rad), -sinf(roll_rad)},
+        {0, sinf(roll_rad), cosf(roll_rad)}
+    };
+
+    float Ry[3][3] = {
+        {cosf(pitch_rad), 0, sinf(pitch_rad)},
+        {0, 1, 0},
+        {-sinf(pitch_rad), 0, cosf(pitch_rad)}
+    };
+
+    float Rz[3][3] = {
+        {cosf(yaw_rad), -sinf(yaw_rad), 0},
+        {sinf(yaw_rad), cosf(yaw_rad), 0},
+        {0, 0, 1}
+    };
+
+    float temp[3][3];
+
+    // Multiply Rz and Ry
+    MatMultiply((const float*)Rx, (const float*)Ry, (float*)temp, 3, 3, 3);
+    MatMultiply((const float*)temp, (const float*)Rz, (float*)R, 3, 3, 3);
+}
+
+trong vong while(1)
+	float RPY_angle[3] = {-90.0, 0.0, -90.0};
+  	float orientation[3][3] =
+  		  {		  {1.0, 0.0, 0.0},
+  				  {0.0, -1.0, 0.0},
+  				  {0.0, 0.0, -1.0}
+  		  };
+
+        // Step 1: Get new position and orientation from the camera
+        //GetNewObjectPose(end_pos, end_ori);
+
+//	  	  	computeRotationMatrix(end_ori, orientation);
+////
+        // Step 2: Move to the object's position and grasp it
+  	  	PCA9685_SetServoAngle(6, 50);
+        GenerateCurvedTrajectory5DOF(start_pos, end_pos, start_ori, end_ori, trajectory, num_points); //generating via points between start and obj
+        for (int c = 0; c < num_points; c++)
+        {
+ 		    InverseKinematics_Calculate(&ik, trajectory[c].position, orientation, target_angle); // Calculate angles
+			convertToActualAngle(target_angle);
+			convertThetaArrayToDegrees(target_angle); // radiant -> degree
+
+			for(int i = 2 ; i >= 0; i--)
+			{
+				target_angle[i] = angleToPWM(target_angle[i]);
+				setpoint = target_angle[i];
+
+				PID_Init(&pid, Kp, Ki, Kd, setpoint, dt);
+		        pid.prev_error = setpoint - current_angle[i];
+
+				while (fabs(current_angle[i] - target_angle[i]) > 0.1)
+				{
+					current_angle[i] += PID_Compute(&pid, current_angle[i]) * dt;
+					angle[i] = PWMToAngle(current_angle[i]);
+					PCA9685_SetServoAngle(2*i, angle[i]);
+				}
+			}
+			HAL_Delay(100);
+			i = 2;
+        }
+        target_angle[3] = angleToPWM(target_angle[3]);
+		setpoint = target_angle[3];
+
+		PID_Init(&pid, Kp, Ki, Kd, setpoint, dt);
+		pid.prev_error = setpoint - current_angle[3];
+
+		while (fabs(current_angle[3] - target_angle[3]) > 0.1)
+		{
+			current_angle[3] += PID_Compute(&pid, current_angle[3]) * dt;
+			angle[3] = PWMToAngle(current_angle[3]);
+			PCA9685_SetServoAngle(6, angle[3]);
+		}
+        HAL_Delay(5000);
+
+        // ActuateGripper(Grasp);
+        PCA9685_SetServoAngle(10, 80); // Grasping object
+        setpoint = angleToPWM(50);
+
+		PID_Init(&pid, Kp, Ki, Kd, setpoint, dt);
+		pid.prev_error = setpoint - current_angle[3];
+
+		while (fabs(current_angle[3] - setpoint) > 0.1)
+		{
+			current_angle[3] += PID_Compute(&pid, current_angle[3]) * dt;
+			angle[3] = PWMToAngle(current_angle[3]);
+			PCA9685_SetServoAngle(6, angle[3]);
+		}
+
+        GenerateCurvedTrajectory5DOF(end_pos, start_pos, end_ori, start_ori, trajectory, num_points); //generating via points between start and obj
+        for (int d = 0; d < num_points; d++)
+        {
+ 		    InverseKinematics_Calculate(&ik, trajectory[d].position, orientation, target_angle); // Calculate angles
+			convertToActualAngle(target_angle);
+			convertThetaArrayToDegrees(target_angle); // radiant -> degree
+
+			for(int i = 2 ; i >= 0; i--)
+			{
+				target_angle[i] = angleToPWM(target_angle[i]);
+				setpoint = target_angle[i];
+
+				PID_Init(&pid, Kp, Ki, Kd, setpoint, dt);
+		        pid.prev_error = setpoint - current_angle[i];
+
+				while (fabs(current_angle[i] - target_angle[i]) > 0.1)
+				{
+					current_angle[i] += PID_Compute(&pid, current_angle[i]) * dt;
+					angle[i] = PWMToAngle(current_angle[i]);
+					PCA9685_SetServoAngle(2*i, angle[i]);
+				}
+			}
+			HAL_Delay(100);
+			i = 2;
+        }
+        target_angle[3] = angleToPWM(target_angle[3]);
+		setpoint = target_angle[3];
+
+		PID_Init(&pid, Kp, Ki, Kd, setpoint, dt);
+		pid.prev_error = setpoint - current_angle[3];
+
+		while (fabs(current_angle[3] - target_angle[3]) > 0.1)
+		{
+			current_angle[3] += PID_Compute(&pid, current_angle[3]) * dt;
+			angle[3] = PWMToAngle(current_angle[3]);
+			PCA9685_SetServoAngle(6, angle[3]);
+		}
+//        target_angle[3] = angleToPWM(target_angle[3]);
+//		setpoint = target_angle[3];
+//
+//		PID_Init(&pid, Kp, Ki, Kd, setpoint, dt);
+//		pid.prev_error = setpoint - current_angle[3];
+//
+//		while (fabs(current_angle[3] - target_angle[3]) > 0.1)
+//		{
+//			current_angle[3] += PID_Compute(&pid, current_angle[3]) * dt;
+//			angle[3] = PWMToAngle(current_angle[3]);
+//			PCA9685_SetServoAngle(6, angle[3]);
+//		}
+        HAL_Delay(30000);
+        // ActuateGripper(Grasp);
+        PCA9685_SetServoAngle(10, 10); // Grasping object
+
+//
+//        // ActuateGripper(Grasp);
+//        PCA9685_SetServoAngle(10, 180); // Placing object
+//
+//        // Step 5: Move back to the rest position
+//		GenerateTrajectory5DOF(fixed_position, start_pos, end_ori, end_ori, trajectory, num_points);
+//		for (int i = 0; i < num_points; i++)
+//		{
+//			InverseKinematics_Calculate(&ik,trajectory[i].position, orientation, target_angle);
+//			convertToActualAngle(target_angle);
+//			convertThetaArrayToDegrees(target_angle); // radiant -> degree
+//			MoveServoToAngle(current_angle, target_angle, increment, current_angle);
+//		}

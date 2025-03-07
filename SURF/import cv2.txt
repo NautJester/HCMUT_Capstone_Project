@@ -1,0 +1,180 @@
+import cv2
+import numpy as np
+from picamera2 import Picamera2
+import serial
+import struct
+
+# Cấu hình cổng UART (thay đổi '/dev/ttyS0' cho phù hợp với cổng của bạn)
+ser = serial.Serial('/dev/ttyUSB0', baudrate=115200, timeout=1)
+
+init_sent = 1
+
+# Hàm kiểm tra circularity
+def is_circle(contour, threshold=0.85):
+    area = cv2.contourArea(contour)
+    perimeter = cv2.arcLength(contour, True)
+    if perimeter == 0:
+        return False
+    circularity = (4 * np.pi * area) / (perimeter ** 2)
+    return circularity >= threshold
+
+def contrast_stretching(image, y):
+    image_float = image.astype(np.float32)
+    g = (image_float / 255) ** y * 255
+    g = np.clip(g, 0, 255).astype(np.uint8)
+    return g
+
+def process_image(frame):
+    box_blur = cv2.boxFilter(frame, ddepth=-1, ksize=(5, 5), normalize=True)
+    bright = cv2.convertScaleAbs(box_blur, alpha=2.0, beta=30)
+    stretched_img = contrast_stretching(box_blur, 1)
+    _, binary = cv2.threshold(stretched_img, 90, 255, cv2.THRESH_BINARY)
+    return binary
+
+# Chuyển đổi tọa độ từ gốc trên trái sang gốc trên phải
+def transform_coordinates(x, y, image_width):
+    new_x = image_width - x
+    return new_x, y
+
+def pixel_to_cm(pixel_x, pixel_y, pixel_to_cm_ratio=1 / 27.23404255):
+    cm_x = pixel_x * pixel_to_cm_ratio
+    cm_y = pixel_y * pixel_to_cm_ratio
+    return cm_x, cm_y
+
+# Hàm gửi tọa độ qua UART
+def send_coordinates(x, y):
+    global init_sent
+    # Chỉ lấy 1 chữ số thập phân
+    x = round(x, 1)
+    y = round(y, 1)
+    print(x)
+    # Định dạng frame
+    header = 0x01      # Header cho frame
+    footer = 0xFF      # Footer cho frame
+    
+    # Chuyển đổi tọa độ x và y sang định dạng byte (IEEE 754)
+    x_bytes = struct.pack('!f', x)  # Chuyển đổi x sang byte, dùng định dạng big-endian
+    y_bytes = struct.pack('!f', y)  # Chuyển đổi y sang byte, dùng định dạng big-endian
+
+    # Tạo frame
+    frame = bytearray()
+    frame.append(header)  # Thêm header
+    frame.extend(x_bytes) # Thêm tọa độ x
+    frame.extend(y_bytes) # Thêm tọa độ y
+
+    # Tính toán checksum
+    checksum = 0
+    for byte in frame:
+        checksum ^= byte  # Tính toán checksum bằng XOR
+
+    frame.append(checksum)  # Thêm checksum
+    frame.append(footer)     # Thêm footer
+
+    # Gửi frame qua UART
+    ser.write(frame)
+    init_sent = 0
+    print(checksum)
+    print(f"Gửi tọa độ x: {x}, y: {y}")  # Thay thế bằng mã gửi thực tế
+
+# Hàm nhận tín hiệu UART
+def receive_uart_signal():
+    global init_sent
+    if ser.in_waiting > 0:
+        signal = ser.read(1)
+        #print(signal)
+        if signal == b'\x01':  # Giả định tín hiệu yêu cầu là byte 0x01
+            init_sent = 1
+            return True
+    return False
+
+# Khởi tạo camera Picamera2
+picam2 = Picamera2()
+config = picam2.create_still_configuration(main={"format": "XRGB8888", "size": (640, 480)})
+picam2.configure(config)
+picam2.start()
+
+
+
+object_image = cv2.imread('/home/tuan/Desktop/temp7.jpg', cv2.IMREAD_GRAYSCALE)
+if object_image is None:
+    print("Không thể mở ảnh mẫu.")
+    exit()
+
+min_hessian = 1000
+surf = cv2.xfeatures2d.SURF_create(hessianThreshold=min_hessian)
+keypoints_obj, descriptors_obj = surf.detectAndCompute(object_image, None)
+bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
+
+obj_corners = np.float32([[0, 0], [object_image.shape[1], 0], 
+                          [object_image.shape[1], object_image.shape[0]], 
+                          [0, object_image.shape[0]]]).reshape(-1, 1, 2)
+
+print("Nhấn 'q' để thoát.")
+
+# Biến toàn cục để lưu trữ tọa độ
+sent_coordinates = []
+
+while True:
+    frame = picam2.capture_array()
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    keypoints_frame, descriptors_frame = surf.detectAndCompute(gray_frame, None)
+
+    if descriptors_frame is not None:
+        matches = bf.knnMatch(descriptors_obj, descriptors_frame, k=2)
+        good_matches = [m for m, n in matches if m.distance < 0.8 * n.distance]
+
+        if len(good_matches) >= 11:
+            src_pts = np.float32([keypoints_obj[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+            dst_pts = np.float32([keypoints_frame[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+
+            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 2.0)
+            if M is not None:
+                scene_corners = cv2.perspectiveTransform(obj_corners, M)
+
+                mask = np.zeros(gray_frame.shape, dtype=np.uint8)
+                cv2.fillConvexPoly(mask, np.int32(scene_corners), 255)
+                object_roi = cv2.bitwise_and(gray_frame, gray_frame, mask=mask)
+
+                binary_img = process_image(object_roi)
+                contours, _ = cv2.findContours(binary_img, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+                circle_contours = [contour for contour in contours if is_circle(contour)]
+
+                if circle_contours:
+                    # Tính toán trọng tâm dựa trên hệ tọa độ gốc trên trái
+                    x_coords = [point[0][0] for point in circle_contours[0]]
+                    y_coords = [point[0][1] for point in circle_contours[0]]
+                    x_center = sum(x_coords) / len(x_coords)
+                    y_center = sum(y_coords) / len(y_coords)
+
+                    # Chuyển đổi tọa độ sang hệ tọa độ mới (gốc trên phải)
+                    new_x, new_y = transform_coordinates(x_center, y_center, gray_frame.shape[1])
+                    
+                    # Chuyển đổi sang cm
+                    center_cm = pixel_to_cm(new_x, new_y)
+
+                    new_x, new_y = pixel_to_cm(new_x, new_y)
+                    
+                    distances = [np.sqrt((x - x_center) ** 2 + (y - y_center) ** 2) for x, y in zip(x_coords, y_coords)]
+                    radius = sum(distances) / len(distances) / 11.73
+
+                    # Kiểm tra và gửi tọa độ nếu có sự thay đổi
+                    if (receive_uart_signal() or (init_sent == 1)) and (radius > 2.7) and (all(abs(new_x - x) > 1 or abs(new_y - y) > 1 for x, y in sent_coordinates)):
+                        sent_coordinates.append((new_x, new_y))  # Lưu tọa độ đã gửi
+                        send_coordinates(float(new_x), float(new_y))
+                    # Vẽ chấm trọng tâm tại tọa độ cũ (gốc trên trái)
+                    center = (int(x_center), int(y_center))
+                    cv2.drawContours(frame, circle_contours, -1, (0, 255, 0), 2)
+                    cv2.circle(frame, center, 3, (0, 0, 255), -1)  # Vẽ trọng tâm màu đỏ
+                    cv2.putText(frame, "Cap Found", (10, 50), cv2.FONT_HERSHEY_SIMPLEX,
+                                1, (0, 0, 255), 2, cv2.LINE_AA)
+
+                frame = cv2.polylines(frame, [np.int32(scene_corners)], True, (0, 255, 0), 3, cv2.LINE_AA)
+        cv2.imshow('SURF Object Detection', frame)
+        cv2.imshow('SURF Object Detection Binary', binary_img)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+picam2.stop()
+cv2.destroyAllWindows()
